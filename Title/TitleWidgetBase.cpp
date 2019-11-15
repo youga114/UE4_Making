@@ -36,7 +36,7 @@ void UTitleWidgetBase::Connect()
 		UMyGameInstance* GI = Cast<UMyGameInstance>(UGameplayStatics::GetGameInstance(GetWorld()));
 		if (GI && UserID && Password)
 		{
-			GI->HTTPPost(TEXT("http://127.0.0.1:52273/login"), UserID->GetText().ToString(), Password->GetText().ToString(), FHttpRequestCompleteDelegate::CreateUObject(this, &UTitleWidgetBase::ConnectResponseReceived));
+			GI->HTTPPost(TEXT("http://192.168.0.189:52273/login"), UserID->GetText().ToString(), Password->GetText().ToString(), FHttpRequestCompleteDelegate::CreateUObject(this, &UTitleWidgetBase::ConnectResponseReceived));
 		}
 	}
 }
@@ -46,7 +46,7 @@ void UTitleWidgetBase::MakeServer()
 	UMyGameInstance* GI = Cast<UMyGameInstance>(UGameplayStatics::GetGameInstance(GetWorld()));
 	if (GI && UserID && Password)
 	{
-		GI->HTTPPost(TEXT("http://127.0.0.1:52273/login"), UserID->GetText().ToString(), Password->GetText().ToString(), FHttpRequestCompleteDelegate::CreateUObject(this, &UTitleWidgetBase::MakeServerResponseReceived));
+		GI->HTTPPost(TEXT("http://192.168.0.189:52273/login"), UserID->GetText().ToString(), Password->GetText().ToString(), FHttpRequestCompleteDelegate::CreateUObject(this, &UTitleWidgetBase::MakeServerResponseReceived));
 	}
 }
 

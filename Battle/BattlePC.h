@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -16,17 +16,25 @@ class PRACTICE3_API ABattlePC : public APlayerController
 
 public:
 	virtual void BeginPlay() override;
-
+	
 	UPROPERTY(BlueprintReadOnly, EditAnywhere)
 	TSubclassOf<class UFlagInsideWidgetBase> FlagInsideWidgetClass;
 
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
 	class UFlagInsideWidgetBase* FlagInsideWidget;
 
+	UPROPERTY(BlueprintReadOnly, EditAnywhere)
+	TSubclassOf<class UBattleWidgetBase> BattleWidgetClass;
+
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
+	class UBattleWidgetBase* BattleWidget;
+
 	void SetAndShowFlagWidget(FName FlagColor);
 	void HideFlagBoundary();
 
 	void SetPercent(float Percent);
 
-	AActor* Flag = nullptr;
+	void SetGaugeColor(FName WillFlagColor);
+
+	void SetOccupationText(FString text);
 };

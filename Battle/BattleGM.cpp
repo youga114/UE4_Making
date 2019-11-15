@@ -19,9 +19,9 @@ void ABattleGM::BeginPlay()
 	// Flag »ý¼º
 	for (auto Location : FlagLocations)
 	{
-		FActorSpawnParameters Parameter;
-		Parameter.Name = Location->Tags[0];
+		AFlag* CurFlag = Cast<AFlag>(GetWorld()->SpawnActor<AFlag>(FlagClass, Location->GetTransform()));
 
-		Cast<AFlag>(GetWorld()->SpawnActor<AFlag>(FlagClass, Location->GetTransform(), Parameter));
+		CurFlag->FlagColor = Location->Tags[0];
+		CurFlag->ChangeFlagColor_OnRep();
 	}
 }

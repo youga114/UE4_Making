@@ -36,7 +36,7 @@ void UMyGameInstance::HTTPGet()
 	TSharedRef<IHttpRequest> Request = Http->CreateRequest();
 	Request->OnProcessRequestComplete().BindUObject(this, &UMyGameInstance::HTTPResponseReceived);
 
-	FString url = FString(TEXT("http://127.0.0.1:52273"));
+	FString url = FString(TEXT("http://192.168.0.189:52273"));
 	Request->SetURL(url);
 	Request->SetVerb("GET");
 	Request->SetHeader(TEXT("User-Agent"), "X-UnrealEngine-Agent");

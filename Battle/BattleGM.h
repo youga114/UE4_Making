@@ -18,4 +18,6 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TSubclassOf<class AFlag> FlagClass;
+
+	void EndGame();
 };

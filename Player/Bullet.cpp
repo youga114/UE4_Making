@@ -18,7 +18,7 @@
 ABullet::ABullet()
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 
 	Box = CreateDefaultSubobject<UBoxComponent>(TEXT("Box"));
 	RootComponent = Box;
@@ -39,48 +39,10 @@ void ABullet::BeginPlay()
 	OnActorBeginOverlap.AddDynamic(this, &ABullet::OnBeginOverlap);
 
 	beginLocation = GetActorLocation();
-
-	AMyCharacter* Player = Cast<AMyCharacter>(GetOwner());
-	if (Player)
-	{
-		APlayerController* PC = Player->GetController<APlayerController>();
-		if (PC)
-		{
-			FVector CameraLocation;
-			FRotator CameraRotation;
-			int32 SizeX;
-			int32 SizeY;
-			FVector WorldLocation;
-			FVector WorldDirection;
-
-			PC->GetPlayerViewPoint(CameraLocation, CameraRotation);
-			PC->GetViewportSize(SizeX, SizeY);
-			PC->DeprojectScreenPositionToWorld(SizeX / 2, SizeY / 2, WorldLocation, WorldDirection);
-			FVector centerLocation = WorldLocation + (WorldDirection * 2000.0f);
-			FVector ironVector = centerLocation - GetActorLocation();
-			Movement->Velocity=ironVector * 4.25;
-		}
-
-		ASoldierAIController* AIC = Player->GetController<ASoldierAIController>();
-		if (AIC)
-		{
-			AMyCharacter* Enemy = Cast<AMyCharacter>(AIC->BBComponent->GetValueAsObject(FName(TEXT("Player"))));
-			if (Enemy)
-			{
-				float missRange = 30.0f;
-				FVector destination = Enemy->GetActorLocation() + FVector(FMath::RandRange(-missRange, missRange), FMath::RandRange(-missRange, missRange), FMath::RandRange(-missRange, missRange));
-				FVector ironVector = destination - GetActorLocation();
-				Movement->Velocity = ironVector * 4.25;
-			}
-		}
-	}
 }
 
-// Called every frame
-void ABullet::Tick(float DeltaTime)
+void ABullet::OnBeginOverlap(AActor * OverlappedActor, AActor * OtherActor)		//OverlappedActor: 액터 본인			OtherActor: 겹쳐진 액터
 {
-	Super::Tick(DeltaTime);
-
 	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectType;
 
 	ObjectType.Add(UEngineTypes::ConvertToObjectType(ECollisionChannel::ECC_WorldDynamic));
@@ -88,10 +50,11 @@ void ABullet::Tick(float DeltaTime)
 	ObjectType.Add(UEngineTypes::ConvertToObjectType(ECollisionChannel::ECC_PhysicsBody));
 
 	TArray<AActor*> IgnoreActors;
+	IgnoreActors.Add(this);
 
-	FHitResult OutHit;
+	TArray<FHitResult> OutHits;
 
-	bool bResult = UKismetSystemLibrary::LineTraceSingleForObjects(
+	bool bResult = UKismetSystemLibrary::LineTraceMultiForObjects(
 		GetWorld(),
 		beginLocation,
 		GetActorLocation(),
@@ -99,24 +62,53 @@ void ABullet::Tick(float DeltaTime)
 		false,
 		IgnoreActors,
 		EDrawDebugTrace::None,
-		OutHit,
+		OutHits,
 		true,
 		FLinearColor::Red,
 		FLinearColor::Green,
-		1.0f
+		5.0f
 	);
 
-	beginLocation = GetActorLocation();
-
-}
-
-void ABullet::OnBeginOverlap(AActor * OverlappedActor, AActor * OtherActor)		//OverlappedActor: 액터 본인			OtherActor: 겹쳐진 액터
-{
-	AMyCharacter* Player = Cast<AMyCharacter>(GetOwner());
-	if (Player)
+	if (bResult)
 	{
-		Player->C2S_Shot(beginLocation, GetActorLocation(), this);
+		for (auto OutHit : OutHits)
+		{
+			if (OutHit.GetActor() == OtherActor)
+			{
+				UParticleSystem* Hit;
+				UMaterialInterface* DecalP;
+				if (OutHit.GetActor()->ActorHasTag(TEXT("Character")))
+				{
+					Hit = BloodEffect;
+					DecalP = BloodDecal;
+				}
+				else
+				{
+					Hit = HitEffect;
+					DecalP = BulletDecal;
+				}
+
+				UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), Hit, OutHit.ImpactPoint + OutHit.ImpactNormal*5.0f, OutHit.ImpactNormal.Rotation());
+
+				UDecalComponent* Decal = UGameplayStatics::SpawnDecalAtLocation(GetWorld(), DecalP, FVector(3, 3, 3), OutHit.ImpactPoint, OutHit.ImpactNormal.Rotation(), 10.0f);
+				Decal->SetFadeScreenSize(0.001f);
+
+				S2A_SpawnDecalAndEffect(OutHit, Hit, DecalP);
+
+				UGameplayStatics::ApplyPointDamage(OutHit.GetActor(), 10.0f, GetActorLocation() - beginLocation, OutHit, OutHit.GetActor()->GetInstigatorController(), GetOwner(), nullptr);
+
+				break;
+			}
+		}
 	}
 
 	Destroy();
+}
+
+void ABullet::S2A_SpawnDecalAndEffect_Implementation(FHitResult OutHit, UParticleSystem * Hit, UMaterialInterface * DecalP)
+{
+	UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), Hit, OutHit.ImpactPoint + OutHit.ImpactNormal*5.0f, OutHit.ImpactNormal.Rotation());
+	
+	UDecalComponent* Decal = UGameplayStatics::SpawnDecalAtLocation(GetWorld(), DecalP, FVector(3, 3, 3), OutHit.ImpactPoint, OutHit.ImpactNormal.Rotation(), 10.0f);
+	Decal->SetFadeScreenSize(0.001f);
 }

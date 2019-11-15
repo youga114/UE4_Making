@@ -20,9 +20,6 @@ protected:
 	virtual void BeginPlay() override;
 
 public:	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
-
 	UPROPERTY(VisibleAnywhere)
 	class UBoxComponent* Box;
 
@@ -37,4 +34,22 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector beginLocation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Effect")
+	class UMaterialInterface* BulletDecal;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Effect")
+	class UMaterialInterface* BloodDecal;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Effect")
+	class UParticleSystem* BloodEffect;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Effect")
+	class UParticleSystem* HitEffect;
+
+	UFUNCTION(NetMulticast, Reliable)
+	void S2A_SpawnDecalAndEffect(FHitResult OutHit, UParticleSystem* Hit, UMaterialInterface* DecalP);
+	void S2A_SpawnDecalAndEffect_Implementation(FHitResult OutHit, UParticleSystem* Hit, UMaterialInterface* DecalP);
+
+	AActor* Creator;
 };

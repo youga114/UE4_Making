@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+ï»¿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "FlagInsideWidgetBase.h"
@@ -24,7 +24,7 @@ void UFlagInsideWidgetBase::NativeConstruct()
 	WhiteImage->SetVisibility(ESlateVisibility::Hidden);
 
 	AMyCharacter* Player = Cast<AMyCharacter>(GetOwningPlayerPawn());
-	if (Player->ActorHasTag("Red"))					//Ã¹ Á¢¼Ó °ÔÀÌÁö ¹æÇâ ¼³Á¤ ÀÌÈÄ º¯µ¿ X
+	if (Player->ActorHasTag("Red"))					//ì²« ì ‘ì† ê²Œì´ì§€ ë°©í–¥ ì„¤ì • ì´í›„ ë³€ë™ X
 	{
 		OccupationGaugeRed->BarFillType = EProgressBarFillType::RightToLeft;
 	}
@@ -91,4 +91,9 @@ void UFlagInsideWidgetBase::SetPercent(float Percent)
 	OccupationGaugeRed->SetPercent(Percent);
 	OccupationGaugeBlue->SetPercent(Percent);
 	OccupationGaugeWhite->SetPercent(Percent);
+}
+
+void UFlagInsideWidgetBase::SetGaugeColor(FName WillFlagColor)
+{
+	OccupationGaugeWhite->FillColorAndOpacity = (WillFlagColor == "Red") ? FLinearColor::Red : FLinearColor::Blue;
 }

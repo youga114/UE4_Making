@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+ï»¿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Flag.h"
@@ -33,7 +33,7 @@ AFlag::AFlag()
 	Arrow = CreateDefaultSubobject<UArrowComponent>(TEXT("Arrow"));
 	Arrow->SetupAttachment(Body);
 
-	bReplicates = true;							//³×Æ®¿öÅ© ÇÏ°Ú´Ù°í ¼±¾ğ(Ä³¸¯ÅÍÀÇ °æ¿ì µğÆúÆ®·Î ÄÑÁ®ÀÖÀ½, ÇÏÁö¸¸ ¿ì¸®°¡ ¸¸µç ¾×ÅÍÀÇ °æ¿ì µğÆúÆ®·Î ²¨Á®ÀÖÀ½)
+	bReplicates = true;							//ë„¤íŠ¸ì›Œí¬ í•˜ê² ë‹¤ê³  ì„ ì–¸(ìºë¦­í„°ì˜ ê²½ìš° ë””í´íŠ¸ë¡œ ì¼œì ¸ìˆìŒ, í•˜ì§€ë§Œ ìš°ë¦¬ê°€ ë§Œë“  ì•¡í„°ì˜ ê²½ìš° ë””í´íŠ¸ë¡œ êº¼ì ¸ìˆìŒ)
 }
 
 // Called when the game starts or when spawned
@@ -44,14 +44,12 @@ void AFlag::BeginPlay()
 	OnActorBeginOverlap.AddDynamic(this, &AFlag::OnBeginOverlap);
 	OnActorEndOverlap.AddDynamic(this, &AFlag::OnEndOverlap);
 
-	//SpawnTimerFunction();
-
 	if (HasAuthority())
 	{
-		S2A_MultiChangeFlagColor(FName(*GetName()));
-	}
+		GetWorld()->GetTimerManager().SetTimer(PercentTimerHandle, this, &AFlag::PercentTimer, 0.1f, true);
 
-	GetWorld()->GetTimerManager().SetTimer(PercentTimerHandle, this, &AFlag::PercentTimer, 0.1f, true);
+		GetWorldTimerManager().SetTimer(SpawnTimer, this, &AFlag::SpawnTimerFunction, 20.0f, true);
+	}
 }
 
 void AFlag::SetInitFlag(FName FlagColor)
@@ -72,21 +70,12 @@ void AFlag::SetInitFlag(FName FlagColor)
 		Boundary->SetMaterial(0, WhiteBoundary);
 	}
 
+	Swap<float>(TeamCount, EnemyCount);
+
 	Percent = 0.0f; 
 	if (HasAuthority())
 	{
 		ChangeFlagPercent_OnRep();
-	}
-
-	Swap<float>(TeamCount,EnemyCount);
-}
-
-void AFlag::S2A_MultiChangeFlagColor_Implementation(FName Color)
-{
-	if (HasAuthority())
-	{
-		FlagColor = Color;
-		ChangeFlagColor_OnRep();
 	}
 }
 
@@ -102,8 +91,6 @@ void AFlag::SpawnTimerFunction()
 		{
 			GetWorld()->SpawnActor<AActor>(BlueClass, Arrow->K2_GetComponentToWorld());
 		}
-
-		GetWorldTimerManager().SetTimer(SpawnTimer, this, &AFlag::SpawnTimerFunction, 10.0f);
 	}
 }
 
@@ -112,16 +99,19 @@ void AFlag::OnBeginOverlap(AActor * OverlappedActor, AActor * OtherActor)
 	AMyCharacter* Player = Cast<AMyCharacter>(OtherActor);
 	if (Player)
 	{
+		Player->Flag = this;
+
 		ABattlePC* PC = Player->GetController<ABattlePC>();
 		if (PC && PC->IsLocalController())
 		{
+			PC->SetOccupationText("Occupied");
+			PC->SetPercent(Percent);
 			PC->SetAndShowFlagWidget(FlagColor);
-			PC->Flag = this;
 		}
 
 		if (HasAuthority())
 		{
-			if (FlagColor == "White")		//Èò»ö ±ê¹ßÀÇ °æ¿ì
+			if (FlagColor == "White")		//í°ìƒ‰ ê¹ƒë°œì˜ ê²½ìš°
 			{
 				if (Player->ActorHasTag("Blue"))
 				{
@@ -152,11 +142,12 @@ void AFlag::OnEndOverlap(AActor * OverlappedActor, AActor * OtherActor)
 	AMyCharacter* Player = Cast<AMyCharacter>(OtherActor);
 	if (Player)
 	{
+		Player->Flag = nullptr;
+
 		ABattlePC* PC = Player->GetController<ABattlePC>();
 		if (PC)
 		{
 			PC->HideFlagBoundary();
-			PC->Flag = nullptr;
 		}
 
 		if (HasAuthority())
@@ -187,13 +178,28 @@ void AFlag::OnEndOverlap(AActor * OverlappedActor, AActor * OtherActor)
 	}
 }
 
+void AFlag::ChangeGaugeColor_OnRep()
+{
+	ABattlePC* PC = Cast<ABattlePC>(UGameplayStatics::GetPlayerController(GetWorld(), 0));
+	if (PC)
+	{
+		AMyCharacter* Player = Cast<AMyCharacter>(PC->GetPawn());
+		if (Player && (this == Player->Flag))
+		{
+			PC->SetGaugeColor(WillFlagColor);
+		}
+	}
+}
+
 void AFlag::ChangeFlagPercent_OnRep()
 {
 	ABattlePC* PC = Cast<ABattlePC>(UGameplayStatics::GetPlayerController(GetWorld(), 0));
 	if (PC)
 	{
-		if (this == PC->Flag)
+		AMyCharacter* Player = Cast<AMyCharacter>(PC->GetPawn());
+		if (Player && (this == Player->Flag))
 		{
+			PC->SetOccupationText("Occuping");
 			PC->SetPercent(Percent);
 		}
 	}
@@ -204,9 +210,14 @@ void AFlag::ChangeFlagColor_OnRep()
 	SetInitFlag(FlagColor);
 
 	ABattlePC* PC = Cast<ABattlePC>(UGameplayStatics::GetPlayerController(GetWorld(), 0));
-	if (PC && PC->Flag == this)
+	if (PC)
 	{
-		PC->SetAndShowFlagWidget(FlagColor);
+		AMyCharacter* Player = Cast<AMyCharacter>(PC->GetPawn());
+		if (Player && (Player->Flag == this))
+		{
+			PC->SetOccupationText("Occupied");
+			PC->SetAndShowFlagWidget(FlagColor);
+		}
 	}
 }
 
@@ -214,13 +225,34 @@ void AFlag::PercentTimer()
 {
 	if (FlagColor == "White")
 	{
-		if (BlueCount > RedCount)
+		if (HasAuthority())
 		{
+			if (BlueCount > RedCount)
+			{
+				EnemyCount = BlueCount;
+				TeamCount = RedCount;
 
-		}
-		else if (BlueCount < RedCount)
-		{
-
+				if (WillFlagColor != "Blue")
+				{
+					WillFlagColor = "Blue";
+					ChangeGaugeColor_OnRep();			//ì„œë²„ì˜ ê²½ìš° Replicateí•¨ìˆ˜ê°€ ì‹¤í–‰ì´ ì•ˆë˜ë¯€ë¡œ ì§ì ‘ ì‹¤í–‰
+				}
+			}
+			else if (BlueCount < RedCount)
+			{
+				EnemyCount = RedCount;
+				TeamCount = BlueCount;
+				if (WillFlagColor != "Red")
+				{
+					WillFlagColor = "Red";
+					ChangeGaugeColor_OnRep();			//ì„œë²„ì˜ ê²½ìš° Replicateí•¨ìˆ˜ê°€ ì‹¤í–‰ì´ ì•ˆë˜ë¯€ë¡œ ì§ì ‘ ì‹¤í–‰
+				}
+			}
+			else
+			{
+				EnemyCount = RedCount;
+				TeamCount = BlueCount;
+			}
 		}
 	}
 
@@ -228,71 +260,50 @@ void AFlag::PercentTimer()
 	{
 		if (HasAuthority())
 		{
+
 			Percent += EnemyCount / TeamCount / 200;
-			ChangeFlagPercent_OnRep();				//¼­¹öÀÇ °æ¿ì ReplicateÇÔ¼ö°¡ ½ÇÇàÀÌ ¾ÈµÇ¹Ç·Î Á÷Á¢ ½ÇÇà
+			ChangeFlagPercent_OnRep();				//ì„œë²„ì˜ ê²½ìš° Replicateí•¨ìˆ˜ê°€ ì‹¤í–‰ì´ ì•ˆë˜ë¯€ë¡œ ì§ì ‘ ì‹¤í–‰
 
 			if (Percent >= 1)
 			{
-				FlagColor = (FlagColor == "Red") ? "Blue" : "Red";
-				ChangeFlagColor_OnRep();			//¼­¹öÀÇ °æ¿ì ReplicateÇÔ¼ö°¡ ½ÇÇàÀÌ ¾ÈµÇ¹Ç·Î Á÷Á¢ ½ÇÇà
+				if (FlagColor == "White")
+				{
+					FlagColor = WillFlagColor;
+				}
+				else
+				{
+					FlagColor = (FlagColor == "Red") ? "Blue" : "Red";
+				}
+				ChangeFlagColor_OnRep();			//ì„œë²„ì˜ ê²½ìš° Replicateí•¨ìˆ˜ê°€ ì‹¤í–‰ì´ ì•ˆë˜ë¯€ë¡œ ì§ì ‘ ì‹¤í–‰
+
+				TArray<AActor*> OutActors;
+				UGameplayStatics::GetAllActorsOfClass(GetWorld(), AFlag::StaticClass(), OutActors);
+
+				bool enemyFlag = false;
+				for (auto flag : OutActors)
+				{
+					AFlag* anyFlag = Cast<AFlag>(flag);
+					if (anyFlag && anyFlag->FlagColor != FlagColor)
+					{
+						enemyFlag = true;
+						break;
+					}
+				}
+				if (!enemyFlag)
+				{
+					GetWorld()->ServerTravel(TEXT("Lobby"));
+					//ê²Œì„ ë ë¡œë¹„ë¡œ
+				}
 			}
 		}
 	}
-
-	//if (FlagColor != "White")
-	//{
-	//	if (EnemyCount > TeamCount)
-	//	{
-	//		if (HasAuthority())
-	//		{
-	//			Percent += EnemyCount / TeamCount / 200;
-	//			ChangeFlagPercent_OnRep();				//¼­¹öÀÇ °æ¿ì ReplicateÇÔ¼ö°¡ ½ÇÇàÀÌ ¾ÈµÇ¹Ç·Î Á÷Á¢ ½ÇÇà
-
-	//			if (Percent >= 1)
-	//			{
-	//				FlagColor = (FlagColor == "Red") ? "Blue" : "Red";
-	//				ChangeFlagColor_OnRep();			//¼­¹öÀÇ °æ¿ì ReplicateÇÔ¼ö°¡ ½ÇÇàÀÌ ¾ÈµÇ¹Ç·Î Á÷Á¢ ½ÇÇà
-	//			}
-	//		}
-	//	}
-	//}
-	//else
-	//{
-	//	if (TeamCount > EnemyCount)				//Blue°¡ ´õ ¸¹À»¶§
-	//	{
-	//		if (HasAuthority())
-	//		{
-	//			Percent += EnemyCount / TeamCount / 200;
-	//			ChangeFlagPercent_OnRep();				//¼­¹öÀÇ °æ¿ì ReplicateÇÔ¼ö°¡ ½ÇÇàÀÌ ¾ÈµÇ¹Ç·Î Á÷Á¢ ½ÇÇà
-
-	//			if (Percent >= 1)
-	//			{
-	//				FlagColor = "Blue";
-	//				ChangeFlagColor_OnRep();			//¼­¹öÀÇ °æ¿ì ReplicateÇÔ¼ö°¡ ½ÇÇàÀÌ ¾ÈµÇ¹Ç·Î Á÷Á¢ ½ÇÇà
-	//			}
-	//		}
-	//	}
-	//	else if (TeamCount < EnemyCount)		//Red°¡ ´õ ¸¹À»¶§
-	//	{
-	//		if (HasAuthority())
-	//		{
-	//			Percent += TeamCount / EnemyCount / 200;
-	//			ChangeFlagPercent_OnRep();				//¼­¹öÀÇ °æ¿ì ReplicateÇÔ¼ö°¡ ½ÇÇàÀÌ ¾ÈµÇ¹Ç·Î Á÷Á¢ ½ÇÇà
-
-	//			if (Percent >= 1)
-	//			{
-	//				FlagColor = "Red";
-	//				ChangeFlagColor_OnRep();			//¼­¹öÀÇ °æ¿ì ReplicateÇÔ¼ö°¡ ½ÇÇàÀÌ ¾ÈµÇ¹Ç·Î Á÷Á¢ ½ÇÇà
-	//			}
-	//		}
-	//	}
-	//}
 }
 
 void AFlag::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(AFlag, Percent);				// ³×Æ®¿öÅ©·Î Á¤º¸ º¸³»ÁÖ´Â Æ÷Æ® »ı¼º
-	DOREPLIFETIME(AFlag, FlagColor);				// ³×Æ®¿öÅ©·Î Á¤º¸ º¸³»ÁÖ´Â Æ÷Æ® »ı¼º
+	DOREPLIFETIME(AFlag, Percent);				// ë„¤íŠ¸ì›Œí¬ë¡œ ì •ë³´ ë³´ë‚´ì£¼ëŠ” í¬íŠ¸ ìƒì„±
+	DOREPLIFETIME(AFlag, FlagColor);				// ë„¤íŠ¸ì›Œí¬ë¡œ ì •ë³´ ë³´ë‚´ì£¼ëŠ” í¬íŠ¸ ìƒì„±
+	DOREPLIFETIME(AFlag, WillFlagColor);				// ë„¤íŠ¸ì›Œí¬ë¡œ ì •ë³´ ë³´ë‚´ì£¼ëŠ” í¬íŠ¸ ìƒì„±
 }

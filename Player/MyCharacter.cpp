@@ -19,12 +19,17 @@
 #include "Zombie/AI/SoldierAIController.h"
 #include "UnrealNetwork.h"
 #include "Bullet.h"
+#include "Flag.h"
+#include "Battle/BattlePC.h"
+#include "Battle/BattleWidgetBase.h"
+#include "GameFramework/ProjectileMovementComponent.h"
+#include "BehaviorTree/BlackboardComponent.h"
 
 // Sets default values
 AMyCharacter::AMyCharacter()
 {
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(RootComponent);
@@ -61,6 +66,8 @@ void AMyCharacter::BeginPlay()
 
 	PawnSensing->OnSeePawn.AddDynamic(this, &AMyCharacter::OnSeePawn);
 
+	SpawnTransform = GetActorTransform();
+
 	FindFlag();
 }
 
@@ -68,7 +75,6 @@ void AMyCharacter::BeginPlay()
 void AMyCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
 }
 
 // Called to bind functionality to input
@@ -118,33 +124,18 @@ void AMyCharacter::LookUp(float Value)
 	{
 		AddControllerPitchInput(Value);
 
-		C2S_LookUp(Value);
+		C2S_LookUp();
 	}
 }
 
-bool AMyCharacter::C2S_LookUp_Validate(float Value)
+bool AMyCharacter::C2S_LookUp_Validate()
 {
 	return true;
 }
 
-void AMyCharacter::C2S_LookUp_Implementation(float Value)
+void AMyCharacter::C2S_LookUp_Implementation()
 {
-	S2A_LookUp(Value);
-}
-
-void AMyCharacter::S2A_LookUp_Implementation(float Value)
-{
-	AimRotator.Pitch -= Value;
-	if (AimRotator.Pitch > 90.0f)
-	{
-		AimRotator.Pitch = 90.0f;
-	}
-	else if (AimRotator.Pitch < -90.0f)
-	{
-		AimRotator.Pitch = -90.0f;
-	}
-
-	AimRotator.Pitch -= Value;
+	AimRotator = GetControlRotation();			// 0 ~ 360
 }
 
 void AMyCharacter::Turn(float Value)
@@ -251,11 +242,36 @@ void AMyCharacter::StartFire()
 	if (!bIsFire)
 	{
 		bIsFire = true;
+
+		C2S_StartFire();
+
 		Fire();
 	}
 }
 
 void AMyCharacter::StopFire()
+{
+	bIsFire = false;
+
+	C2S_StopFire();
+}
+
+bool AMyCharacter::C2S_StartFire_Validate()
+{
+	return true;
+}
+
+void AMyCharacter::C2S_StartFire_Implementation()
+{
+	bIsFire = true;
+}
+
+bool AMyCharacter::C2S_StopFire_Validate()
+{
+	return true;
+}
+
+void AMyCharacter::C2S_StopFire_Implementation()
 {
 	bIsFire = false;
 }
@@ -268,20 +284,48 @@ void AMyCharacter::Fire()
 	}
 
 	APlayerController* PC = GetController<APlayerController>();
-
-	FActorSpawnParameters SpawnParameters = FActorSpawnParameters();
-	SpawnParameters.Owner = this;
-	GetWorld()->SpawnActor<AActor>(BulletClass, Weapon->GetSocketTransform(TEXT("Muzzle")), SpawnParameters);
 	if (PC)
 	{
-		PC->PlayerCameraManager->PlayCameraShake(FireCameraShake);
+		FVector CameraLocation;
+		FRotator CameraRotation;
+		int32 SizeX;
+		int32 SizeY;
+		FVector WorldLocation;
+		FVector WorldDirection;
+
+		PC->GetPlayerViewPoint(CameraLocation, CameraRotation);
+		PC->GetViewportSize(SizeX, SizeY);
+		PC->DeprojectScreenPositionToWorld(SizeX / 2, SizeY / 2, WorldLocation, WorldDirection);
+		FVector centerLocation = WorldLocation + (WorldDirection * 2000.0f);
+		FVector ironVector = centerLocation - GetActorLocation();
+		ironVector *= 4.25;
+
+		C2S_SpawnBullet(ironVector);						//총알 생성(서버가)
+
+		PC->PlayerCameraManager->PlayCameraShake(FireCameraShake);			//카메라 흔들기
+	}
+
+	ASoldierAIController* AIC = GetController<ASoldierAIController>();
+	if (AIC)
+	{
+		AMyCharacter* Enemy = Cast<AMyCharacter>(AIC->BBComponent->GetValueAsObject(FName(TEXT("Player"))));
+		if (Enemy)
+		{
+			float missRange = 30.0f;
+			FVector destination = Enemy->GetActorLocation() + FVector(FMath::RandRange(-missRange, missRange), FMath::RandRange(-missRange, missRange), FMath::RandRange(-missRange, missRange));
+			FVector ironVector = destination - GetActorLocation();
+			ironVector *= 4.25;
+
+			C2S_SpawnBullet(ironVector);						//총알 생성(서버가)
+		}
 	}
 
 	FRotator PlayerRotation = GetControlRotation();
-	PlayerRotation.Pitch += 1.0f;
+	PlayerRotation.Pitch += ShakeHeight;
 	GetController()->SetControlRotation(PlayerRotation);
+	C2S_LookUp();
 
-	C2S_SpawnSoundAndMuzzle();
+	C2S_SpawnSoundAndMuzzle();				//소리, 이펙트 생성
 
 	if (bIsFire)
 	{
@@ -289,65 +333,22 @@ void AMyCharacter::Fire()
 	}
 }
 
-bool AMyCharacter::C2S_Shot_Validate(FVector TraceStart, FVector TraceEnd, AActor* ignoreActor)
+bool AMyCharacter::C2S_SpawnBullet_Validate(FVector ironVector)
 {
 	return true;
 }
 
-void AMyCharacter::C2S_Shot_Implementation(FVector TraceStart, FVector TraceEnd, AActor* ignoreActor)
+void AMyCharacter::C2S_SpawnBullet_Implementation(FVector ironVector)
 {
-	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectType;
-
-	ObjectType.Add(UEngineTypes::ConvertToObjectType(ECollisionChannel::ECC_WorldDynamic));
-	ObjectType.Add(UEngineTypes::ConvertToObjectType(ECollisionChannel::ECC_WorldStatic));
-	ObjectType.Add(UEngineTypes::ConvertToObjectType(ECollisionChannel::ECC_PhysicsBody));
-
-	TArray<AActor*> IgnoreActors;
-	IgnoreActors.Add(ignoreActor);
-
-	FHitResult OutHit;
-
-	bool bResult = UKismetSystemLibrary::LineTraceSingleForObjects(
-		GetWorld(),
-		TraceStart,
-		TraceEnd,
-		ObjectType,
-		false,
-		IgnoreActors,
-		EDrawDebugTrace::None,
-		OutHit,
-		true,
-		FLinearColor::Red,
-		FLinearColor::Green,
-		5.0f
-	);
-	if (bResult)
+	ABullet* Bullet = Cast<ABullet>(GetWorld()->SpawnActor<AActor>(BulletClass, Weapon->GetSocketTransform(TEXT("Muzzle"))));
+	if (Bullet)
 	{
-		UParticleSystem* Hit;
-		UMaterialInterface* DecalP;
-		if (OutHit.GetActor()->ActorHasTag(TEXT("Character")))
+		UProjectileMovementComponent* BulletMovement = Cast<UProjectileMovementComponent>(Bullet->Movement);
+		if (BulletMovement)
 		{
-			Hit = BloodEffect;
-			DecalP = BloodDecal;
+			BulletMovement->Velocity = ironVector;
 		}
-		else
-		{
-			Hit = HitEffect;
-			DecalP = BulletDecal;
-		}
-
-		S2A_SpawnDecalAndEffect(OutHit, Hit, DecalP);
-
-		S2A_ApplyPointDamage(OutHit, TraceEnd - TraceStart);
 	}
-}
-
-void AMyCharacter::S2A_SpawnDecalAndEffect_Implementation(FHitResult OutHit, UParticleSystem * Hit, UMaterialInterface * DecalP)
-{
-	UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), Hit, OutHit.ImpactPoint + OutHit.ImpactNormal*5.0f, OutHit.ImpactNormal.Rotation());
-
-	UDecalComponent* Decal = UGameplayStatics::SpawnDecalAtLocation(GetWorld(), DecalP, FVector(3, 3, 3), OutHit.ImpactPoint, OutHit.ImpactNormal.Rotation(), 10.0f);
-	Decal->SetFadeScreenSize(0.001f);
 }
 
 bool AMyCharacter::C2S_SpawnSoundAndMuzzle_Validate()
@@ -369,14 +370,6 @@ void AMyCharacter::S2A_SpawnSoundAndMuzzle_Implementation()
 	}
 }
 
-void AMyCharacter::S2A_ApplyPointDamage_Implementation(FHitResult OutHit, FVector HitFromDirection)
-{
-	if (OutHit.GetActor())
-	{
-		UGameplayStatics::ApplyPointDamage(OutHit.GetActor(), 10.0f, HitFromDirection, OutHit, OutHit.GetActor()->GetInstigatorController(), this, nullptr);
-	}
-}
-
 void AMyCharacter::FireTimerFunction()
 {
 	Fire();
@@ -384,7 +377,13 @@ void AMyCharacter::FireTimerFunction()
 
 void AMyCharacter::DeadTimerFunction()
 {
-	Destroy();
+	ABattlePC* PC = Cast<ABattlePC>(GetController());
+	if (PC && PC->BattleWidget)
+	{
+		PC->BattleWidget->SetHp(1.0f);				//위젯 체력바 초기화
+
+		C2S_SpawnCharacter();
+	}
 }
 
 FRotator AMyCharacter::GetAimOffset() const
@@ -395,7 +394,13 @@ FRotator AMyCharacter::GetAimOffset() const
 		return ActorToWorld().InverseTransformVectorNoScale(GetBaseAimRotation().Vector()).Rotation();
 	}
 
-	return AimRotator;
+	FRotator ret = AimRotator;			// 0 ~ 360
+	if (ret.Pitch > 180.0f)
+	{
+		ret.Pitch -= 360.0f;				//AimPitch 값을 -90 ~ 90로 하기 위하여
+	}
+
+	return ret;
 }
 
 FVector AMyCharacter::GetSpringArmPosition() const
@@ -408,7 +413,7 @@ void AMyCharacter::SetSpringArmPosition(FVector NewPosition)
 	SpringArm->SetRelativeLocation(NewPosition);
 }
 
-float AMyCharacter::TakeDamage(float DamageAmount, FDamageEvent const & DamageEvent, AController * EventInstigator, AActor * DamageCauser)
+float AMyCharacter::TakeDamage(float DamageAmount, FDamageEvent const & DamageEvent, AController * EventInstigator, AActor * DamageCauser)				//서버에서 실행되는 함수
 {
 	if (CurrentHP == 0)
 	{
@@ -432,72 +437,58 @@ float AMyCharacter::TakeDamage(float DamageAmount, FDamageEvent const & DamageEv
 	{
 		CurrentHP -= DamageAmount;
 	}
-	FString HitName = FString::Printf(TEXT("Hit%d"), FMath::RandRange(1, 4));
-
-	PlayAnimMontage(HitAnimation, 2.0f, FName(*HitName));
 
 	CurrentHP = FMath::Clamp<float>(CurrentHP, 0, MaxHP);
-
-
-	AMyCharacter* Someone = Cast<AMyCharacter>(DamageCauser);
-	if (ActorHasTag(TEXT("Red")))					//내 팀을 먼저 확인하고
+	if (HasAuthority())
 	{
-		if (Someone && CurrentState == ESoldierState::Normal && Someone->ActorHasTag(TEXT("Blue")))		//적이 쏜것이라면
-		{
-			ASoldierAIController* AIC = Cast<ASoldierAIController>(GetController());
-			if (AIC && CurrentState == ESoldierState::Normal)
-			{
-				CurrentState = ESoldierState::Battle;
-				AIC->SetCurrentState(CurrentState);
-				AIC->SetTargetPlayer(Someone);
-			}
-		}
-	}
-	else if (ActorHasTag(TEXT("Blue")))
-	{
-		if (Someone && CurrentState == ESoldierState::Normal && Someone->ActorHasTag(TEXT("Red")))
-		{
-			ASoldierAIController* AIC = Cast<ASoldierAIController>(GetController());
-			if (AIC && CurrentState == ESoldierState::Normal)
-			{
-				CurrentState = ESoldierState::Battle;
-				AIC->SetCurrentState(CurrentState);
-				AIC->SetTargetPlayer(Someone);
-			}
-		}
+		ConnectCurrentHP_OnRep();
 	}
 
+	S2A_HitProcess();
+
+	//AMyCharacter* Someone = Cast<AMyCharacter>(DamageCauser);
+	//if (ActorHasTag(TEXT("Red")))					//내 팀을 먼저 확인하고
+	//{
+	//	if (Someone && CurrentState == ESoldierState::Normal && Someone->ActorHasTag(TEXT("Blue")))		//적이 쏜것이라면
+	//	{
+	//		ASoldierAIController* AIC = Cast<ASoldierAIController>(GetController());
+	//		if (AIC && CurrentState == ESoldierState::Normal)
+	//		{
+	//			CurrentState = ESoldierState::Battle;
+	//			AIC->SetCurrentState(CurrentState);
+	//			AIC->SetTargetPlayer(Someone);
+	//		}
+	//	}
+	//}
+	//else if (ActorHasTag(TEXT("Blue")))
+	//{
+	//	if (Someone && CurrentState == ESoldierState::Normal && Someone->ActorHasTag(TEXT("Red")))
+	//	{
+	//		ASoldierAIController* AIC = Cast<ASoldierAIController>(GetController());
+	//		if (AIC && CurrentState == ESoldierState::Normal)
+	//		{
+	//			CurrentState = ESoldierState::Battle;
+	//			AIC->SetCurrentState(CurrentState);
+	//			AIC->SetTargetPlayer(Someone);
+	//		}
+	//	}
+	//}
 
 	if (CurrentHP == 0)
 	{
-		FString DeadName = FString::Printf(TEXT("death_%d"), FMath::RandRange(1, 3));
-
-		PlayAnimMontage(DeadAnimation, 1.0f, FName(*DeadName));
-
-		APlayerController* PC = Cast<APlayerController>(GetController());
-		if (PC)
-		{
-			StopFire();
-			UnIronsight();
-			DisableInput(PC);					//입력 전부 막기
-		}
-
-		ASoldierAIController* AIC = Cast<ASoldierAIController>(GetController());
-		if (AIC)
-		{
-			CurrentState = ESoldierState::Dead;
-			AIC->SetCurrentState(ESoldierState::Dead);
-			StopFire();
-			UnIronsight();
-		}
-
-		GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-
-		
-		GetWorldTimerManager().SetTimer(DeadTimer, this, &AMyCharacter::DeadTimerFunction, 5.0f);					//0.12초 후에 함수를 호출함
+		S2A_DeadProcess();
 	}
 
 	return Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+}
+
+void AMyCharacter::ConnectCurrentHP_OnRep()
+{
+	ABattlePC* PC = Cast<ABattlePC>(GetController());
+	if (PC && PC->BattleWidget)								//서버의 경우 모든 클라이언트의 PC는 가지고 있지만 Widget은 가지고 있지 않음
+	{
+		PC->BattleWidget->SetHp(CurrentHP / 100);
+	}
 }
 
 void AMyCharacter::OnSeePawn(APawn * Pawn)				//한번만 실행됨
@@ -547,17 +538,11 @@ void AMyCharacter::FindFlag()
 	if (AIC)
 	{
 		TArray<AActor*> OutActors;
-		if (ActorHasTag(TEXT("Red")))
-		{
-			UGameplayStatics::GetAllActorsWithTag(GetWorld(), TEXT("BlueFlag"), OutActors);
-		}
-		else if (ActorHasTag(TEXT("Blue")))
-		{
-			UGameplayStatics::GetAllActorsWithTag(GetWorld(), TEXT("RedFlag"), OutActors);
-		}
+		UGameplayStatics::GetAllActorsWithTag(GetWorld(), TEXT("Flag"), OutActors);
+
 		if (OutActors.Num() > 0)
 		{
-			AIC->SetTargetFlag(OutActors[FMath::RandRange(0, OutActors.Num() - 1)]);
+			AIC->SetTargetFlag(OutActors[FMath::RandRange(0, OutActors.Num() - 1)]);				//AI가 도착할 Flag설정
 		}
 	}
 }
@@ -568,6 +553,61 @@ void AMyCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 
 	DOREPLIFETIME(AMyCharacter, bIsSprint);
 	DOREPLIFETIME(AMyCharacter, bIsIronsight);
+	DOREPLIFETIME(AMyCharacter, AimRotator);
+	DOREPLIFETIME(AMyCharacter, CurrentHP);
+	DOREPLIFETIME(AMyCharacter, bIsFire);
+}
+
+bool AMyCharacter::C2S_SpawnCharacter_Validate()
+{
+	return true;
+}
+
+void AMyCharacter::C2S_SpawnCharacter_Implementation()
+{
+	ABattlePC* PC = Cast<ABattlePC>(GetController());
+	if (PC)
+	{
+		Destroy();
+		PC->UnPossess();																						//언포세스 서버에서
+		AMyCharacter* MyCharacter = GetWorld()->SpawnActor<AMyCharacter>(PlayerClass, SpawnTransform);			//스폰 서버에서
+		PC->Possess(MyCharacter);																				//포세스 서버에서
+	}
+}
+
+void AMyCharacter::S2A_HitProcess_Implementation()
+{
+	FString HitName = FString::Printf(TEXT("Hit%d"), FMath::RandRange(1, 4));
+
+	PlayAnimMontage(HitAnimation, 2.0f, FName(*HitName));
+}
+
+void AMyCharacter::S2A_DeadProcess_Implementation()
+{
+	FString DeadName = FString::Printf(TEXT("death_%d"), FMath::RandRange(1, 3));
+
+	PlayAnimMontage(DeadAnimation, 1.0f, FName(*DeadName));
+
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (PC)
+	{
+		StopFire();
+		UnIronsight();
+		DisableInput(PC);					//입력 전부 막기
+	}
+
+	ASoldierAIController* AIC = Cast<ASoldierAIController>(GetController());
+	if (AIC)
+	{
+		CurrentState = ESoldierState::Dead;
+		AIC->SetCurrentState(ESoldierState::Dead);
+		StopFire();
+		UnIronsight();
+	}
+
+	GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+	GetWorldTimerManager().SetTimer(DeadTimer, this, &AMyCharacter::DeadTimerFunction, 5.0f);
 }
 
 //애니메이션이 클라이언트마다 다르므로 TakeDamage로 뿌릴때 같은 애니메이션 적용

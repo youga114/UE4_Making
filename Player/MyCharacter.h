@@ -64,7 +64,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated)
 	uint8 bIsIronsight : 1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated)
 	uint8 bIsFire : 1;
 
 
@@ -74,13 +74,13 @@ public:
 	void LookUp(float Value);
 
 	UFUNCTION(Server, Reliable, WithValidation)
-	void C2S_LookUp(float Value);
-	bool C2S_LookUp_Validate(float Value);
-	void C2S_LookUp_Implementation(float Value);
+	void C2S_LookUp();
+	bool C2S_LookUp_Validate();
+	void C2S_LookUp_Implementation();
 
-	UFUNCTION(NetMulticast, Reliable)
-	void S2A_LookUp(float Value);
-	void S2A_LookUp_Implementation(float Value);
+	//UFUNCTION(NetMulticast, Reliable)
+	//void S2A_LookUp(float Value);
+	//void S2A_LookUp_Implementation(float Value);
 
 	void Turn(float Value);
 
@@ -115,16 +115,22 @@ public:
 	void StartFire();
 	void StopFire();
 
+	UFUNCTION(Server, Reliable, WithValidation)
+	void C2S_StartFire();
+	bool C2S_StartFire_Validate();
+	void C2S_StartFire_Implementation();
+
+	UFUNCTION(Server, Reliable, WithValidation)
+	void C2S_StopFire();
+	bool C2S_StopFire_Validate();
+	void C2S_StopFire_Implementation();
+
 	void Fire();
 
 	UFUNCTION(Server, Reliable, WithValidation)
-	void C2S_Shot(FVector TraceStart, FVector TraceEnd, AActor* ignoreActor);
-	bool C2S_Shot_Validate(FVector TraceStart, FVector TraceEnd, AActor* ignoreActor);
-	void C2S_Shot_Implementation(FVector TraceStart, FVector TraceEnd, AActor* ignoreActor);
-
-	UFUNCTION(NetMulticast, Reliable)
-	void S2A_SpawnDecalAndEffect(FHitResult OutHit, UParticleSystem* Hit, UMaterialInterface* DecalP);
-	void S2A_SpawnDecalAndEffect_Implementation(FHitResult OutHit, UParticleSystem* Hit, UMaterialInterface* DecalP);
+	void C2S_SpawnBullet(FVector ironVector);
+	bool C2S_SpawnBullet_Validate(FVector ironVector);
+	void C2S_SpawnBullet_Implementation(FVector ironVector);
 
 	UFUNCTION(Server, Reliable, WithValidation)
 	void C2S_SpawnSoundAndMuzzle();
@@ -134,10 +140,6 @@ public:
 	UFUNCTION(NetMulticast, Reliable)
 	void S2A_SpawnSoundAndMuzzle();
 	void S2A_SpawnSoundAndMuzzle_Implementation();
-
-	UFUNCTION(NetMulticast, Reliable)
-	void S2A_ApplyPointDamage(FHitResult OutHit, FVector HitFromDirection);
-	void S2A_ApplyPointDamage_Implementation(FHitResult OutHit, FVector HitFromDirection);
 
 	FTimerHandle FireTimer;
 	FTimerHandle DeadTimer;
@@ -185,8 +187,11 @@ public:
 
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, ReplicatedUsing = "ConnectCurrentHP_OnRep")
 	float CurrentHP = 100.0f;
+
+	UFUNCTION()
+	void ConnectCurrentHP_OnRep();
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float MaxHP = 100.0f;
@@ -206,6 +211,9 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	TSubclassOf<class AActor> BulletClass;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	TSubclassOf<class AActor> PlayerClass;
+
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSeePawnDelegate, int32, Pawn);
 
 	FSeePawnDelegate OnBeginPlay;
@@ -216,11 +224,32 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	ESoldierState CurrentState = ESoldierState::Normal;
 
-	FRotator AimRotator;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated)
+	FRotator AimRotator = FRotator::ZeroRotator;
 
 	void SetAimRotator(FVector AimVector);
 
 	void FindFlag();
 
+	class AFlag* Flag = nullptr;
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;		//이거 없으면 3명 이상일 때 안됨.
+
+	UFUNCTION(Server, Reliable, WithValidation)
+	void C2S_SpawnCharacter();
+	bool C2S_SpawnCharacter_Validate();
+	void C2S_SpawnCharacter_Implementation();
+
+	FTransform SpawnTransform;
+
+	float ShakeHeight = 1.0f;
+
+	UFUNCTION(NetMulticast, Reliable)			//NetMulticast: 이 함수는 서버 로컬 및 모든 클라이언트에 리플리케이트되는 상황 양쪽에서, 액터의 NetOwner 와 상관 없이 실행됩니다.
+	void S2A_HitProcess();
+	void S2A_HitProcess_Implementation();
+
+	UFUNCTION(NetMulticast, Reliable)			//NetMulticast: 이 함수는 서버 로컬 및 모든 클라이언트에 리플리케이트되는 상황 양쪽에서, 액터의 NetOwner 와 상관 없이 실행됩니다.
+	void S2A_DeadProcess();
+	void S2A_DeadProcess_Implementation();
 };

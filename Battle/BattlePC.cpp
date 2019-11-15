@@ -1,20 +1,25 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+ï»¿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "BattlePC.h"
 #include "Flag/FlagInsideWidgetBase.h"
+#include "Battle/BattleWidgetBase.h"
 #include "Player/MyCharacter.h"
 
 void ABattlePC::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (IsLocalPlayerController())				//À§Á¬ ÃÊ±âÈ­
+	if (IsLocalPlayerController())				//ìœ„ì ¯ ì´ˆê¸°í™”
 	{
 		FlagInsideWidget = CreateWidget<UFlagInsideWidgetBase>(this, FlagInsideWidgetClass);
 		FlagInsideWidget->AddToViewport();
 
-		AMyCharacter* Player = Cast<AMyCharacter>(GetPawn());		//Ã¹ Á¢¼Ó À§Á¬ ÃÊ±âÈ­
+		BattleWidget = CreateWidget<UBattleWidgetBase>(this, BattleWidgetClass);
+		BattleWidget->AddToViewport();
+
+		SetInputMode(FInputModeGameOnly());
+		AMyCharacter* Player = Cast<AMyCharacter>(GetPawn());		//ì²« ì ‘ì† ìœ„ì ¯ ì´ˆê¸°í™”
 		if (Player)
 		{
 			if (Player->ActorHasTag("Red"))
@@ -49,6 +54,24 @@ void ABattlePC::HideFlagBoundary()
 
 void ABattlePC::SetPercent(float Percent)
 {
-	FlagInsideWidget->SetPercent(Percent);
+	if (FlagInsideWidget)
+	{
+		FlagInsideWidget->SetPercent(Percent);
+	}
 }
 
+void ABattlePC::SetGaugeColor(FName WillFlagColor)
+{
+	if (FlagInsideWidget)
+	{
+		FlagInsideWidget->SetGaugeColor(WillFlagColor);
+	}
+}
+
+void ABattlePC::SetOccupationText(FString text)
+{
+	if (FlagInsideWidget)
+	{
+		FlagInsideWidget->SetOccupationName(text);
+	}
+}

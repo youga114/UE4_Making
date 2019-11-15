@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+ï»¿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -21,10 +21,6 @@ protected:
 
 public:	
 	void SetInitFlag(FName FlagColor);
-
-	UFUNCTION(NetMulticast, Reliable)
-	void S2A_MultiChangeFlagColor(FName Color);
-	void S2A_MultiChangeFlagColor_Implementation(FName Color);
 
 	UPROPERTY(VisibleAnywhere)
 	class UCapsuleComponent* Capsule;
@@ -79,8 +75,11 @@ public:
 	UFUNCTION()
 	void OnEndOverlap(AActor* OverlappedActor, AActor* OtherActor);
 
-	UPROPERTY(ReplicatedUsing = "ChangeFlagColor_OnRep")				//¼­¹ö¿¡ ÀÖ´Â °ªÀ» Å¬¶ó¿¡ ÀüºÎ º¹»ç
+	UPROPERTY(ReplicatedUsing = "ChangeFlagColor_OnRep")				//ì„œë²„ì— ìˆëŠ” ê°’ì„ í´ë¼ì— ì „ë¶€ ë³µì‚¬
 	FName FlagColor;
+
+	UFUNCTION()
+	void ChangeFlagColor_OnRep();
 
 	float TeamCount = 1.0f;
 	float EnemyCount = 1.0f;
@@ -88,14 +87,18 @@ public:
 	float BlueCount = 1.0f;
 	float RedCount = 1.0f;
 
-	UPROPERTY(ReplicatedUsing = "ChangeFlagPercent_OnRep")				//¼­¹ö¿¡ ÀÖ´Â °ªÀ» Å¬¶ó¿¡ ÀüºÎ º¹»ç(°ªÀÌ ¹Ù²î¸é ÀÚµ¿ ConnectCount_OnRepÈ£Ãâ)
+	UPROPERTY(ReplicatedUsing = "ChangeGaugeColor_OnRep")				//ì„œë²„ì— ìˆëŠ” ê°’ì„ í´ë¼ì— ì „ë¶€ ë³µì‚¬(ê°’ì´ ë°”ë€Œë©´ ìë™ ConnectCount_OnRepí˜¸ì¶œ)
+	FName WillFlagColor = "White";
+
+	UFUNCTION()
+	void ChangeGaugeColor_OnRep();
+
+	UPROPERTY(ReplicatedUsing = "ChangeFlagPercent_OnRep")				//ì„œë²„ì— ìˆëŠ” ê°’ì„ í´ë¼ì— ì „ë¶€ ë³µì‚¬(ê°’ì´ ë°”ë€Œë©´ ìë™ ConnectCount_OnRepí˜¸ì¶œ)
 	float Percent = 0.0f;
 
 	UFUNCTION()
 	void ChangeFlagPercent_OnRep();
 
-	UFUNCTION()
-	void ChangeFlagColor_OnRep();
 
 	UFUNCTION()
 	void PercentTimer();
